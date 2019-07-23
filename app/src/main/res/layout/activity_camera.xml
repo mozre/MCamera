@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".CameraActivity">
+<RelativeLayout
+    android:id="@+id/main_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+</RelativeLayout>
+<!--
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:minHeight="100dp"
+        android:orientation="horizontal">
+
+        <com.mozre.mcamera.CircleImageView
+            android:id="@+id/circle_image_view"
+            android:layout_width="@dimen/thumbnail_size"
+            android:layout_height="@dimen/thumbnail_size"
+            app:border_color="@color/setting_normal_color"
+            app:border_width="@dimen/border_width" />
+
+        <com.mozre.mcamera.TapCaptureView
+            android:layout_width="@dimen/thumbnail_size"
+            android:layout_height="@dimen/thumbnail_size"
+            app:tap_border_color="@color/setting_normal_color"
+            app:tap_border_width="@dimen/border_width"
+            app:tap_content_color="@color/colorPrimaryDark"/>
+    </LinearLayout>
+-->
+</FrameLayout>
