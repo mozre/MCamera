@@ -12,6 +12,7 @@ import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
+import android.hardware.camera2.params.Face;
 import android.hardware.camera2.params.MeteringRectangle;
 import android.media.Image;
 import android.media.ImageReader;
@@ -78,7 +79,8 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
         public void onConfigured(@NonNull CameraCaptureSession session) {
             Log.i(TAG, "CameraCaptureSession.StateCallback onConfigured: ");
             mCameraCaptureSession = session;
-            sendPreviewRequest(mMainHandler);
+            String id = session.getDevice().getId();
+            sendPreviewRequest(mMainHandler, id);
         }
 
         @Override
@@ -101,15 +103,17 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
         @Override
         public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
             super.onCaptureStarted(session, request, timestamp, frameNumber);
-            Log.i(TAG, "onCaptureStarted: ");
+//            Log.i(TAG, "onCaptureStarted: ");
         }
 
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
             mPreviewCaptureRequest = request;
-            Log.i(TAG, "onCaptureCompleted: ");
-            if (mCustomerSurfaceView != null) {
+            Face[] faces = result.get(CaptureResult.STATISTICS_FACES);
+            String id = (String) result.getRequest().getTag();
+            Log.i(TAG, "onCaptureCompleted id: " + id + " face count: " + faces.length);
+            if (mMainCameraId.equals(id) && mCustomerSurfaceView != null) {
                 mCustomerSurfaceView.previewReady();
                 mCustomerSurfaceView.requestRender();
             }
@@ -237,7 +241,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
                 Constants.PREVIEW_SIZE.getHeight(), ImageFormat.YUV_420_888, 1);
         imageReader.setOnImageAvailableListener(mImageAvailableListener, handler);
         mFrameStreamingSurface = imageReader.getSurface();
-        return Arrays.asList(mFrameStreamingSurface, mGLPreviewSurface);
+        return Arrays.asList(mGLPreviewSurface, mFrameStreamingSurface);
     }
 
     private int checkModeIsSupport(int mode, CameraCharacteristics.Key<int[]> key) {
@@ -256,7 +260,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
         return supportModeList[0];
     }
 
-    private void sendPreviewRequest(Handler handler) {
+    private void sendPreviewRequest(Handler handler, String id) {
         Log.d(TAG, "sendPreviewRequest: ");
         int afMode = checkModeIsSupport(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE, CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
         int aeAntibandingMode = checkModeIsSupport(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO, CameraCharacteristics.CONTROL_AE_AVAILABLE_ANTIBANDING_MODES);
@@ -272,6 +276,14 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
             }
             builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+            // face detection
+            builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE);
+//            builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+            // white balance
+            builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
+            // Expose
+            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, CaptureRequest.CONTROL_AE_MODE_ON_EXTERNAL_FLASH);
+            builder.setTag(id);
             mCameraCaptureSession.setRepeatingRequest(builder.build(), mPreviewCaptureCallback, handler);
         } catch (CameraAccessException e) {
             e.printStackTrace();

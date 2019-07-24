@@ -12,7 +12,7 @@ public class Constants {
     };
     public static final int PERMISSION_REQUEST_CODE = 3;
     public static final String CAMERA_THREAD_NAME = "camera_thread_m";
-    public static final Size PREVIEW_SIZE = new Size(960, 720);
+    public static final Size PREVIEW_SIZE = new Size(1440, 1080);
     public static final Size CAPTURE_SIZE = new Size(4160, 3120);
     private static final String APP_TAG_NAME = "mozre_1/";
 

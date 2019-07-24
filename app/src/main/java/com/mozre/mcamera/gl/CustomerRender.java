@@ -1,14 +1,16 @@
 package com.mozre.mcamera.gl;
 
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Environment;
 import android.util.Log;
+import android.view.Display;
 
-import com.mozre.mcamera.CircleImageView;
 import com.mozre.mcamera.Constants;
 
 import java.io.File;
@@ -35,11 +37,24 @@ public class CustomerRender implements GLSurfaceView.Renderer {
     private int mHeight;
     private boolean isReady = false;
     private int mFboId = -1;
+    private Rect mViewportRect;
 
     public CustomerRender(Context context, int width, int height) {
         this.mContext = context;
-        this.mWidth = width;
-        this.mHeight = height;
+        this.mWidth = height;
+        this.mHeight = width;
+        Activity activity = (Activity) context;
+        Display display = activity.getWindowManager().getDefaultDisplay();
+        mViewportRect = new Rect();
+        display.getRectSize(mViewportRect);
+        float scale = mViewportRect.width() / (float) this.mWidth;
+        int margin = (int) (mViewportRect.height() - scale * mHeight);
+        mViewportRect.left = 0;
+        mViewportRect.top = margin;
+        mViewportRect.right = mViewportRect.width();
+        mViewportRect.bottom = mViewportRect.height();
+//        Log.d(TAG, "CustomerRender screen width: " + mViewportRect.width() + " height: " + mViewportRect.height() + " width: " + width + " Height: " + height);
+        Log.d(TAG, "CustomerRender screen left: " + mViewportRect.left + " height: " + mViewportRect.top + " width: " + mViewportRect.right + " Height: " + mViewportRect.bottom);
     }
 
     @Override
@@ -64,9 +79,9 @@ public class CustomerRender implements GLSurfaceView.Renderer {
             OpenglUtil.deleteTextureID(mInTextureId);
         }
         mInTextureId = OpenglUtil.initCameraTextureID();
-        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, mWidth, mHeight, 0,
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mInTextureId);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, mViewportRect.width(), mViewportRect.height(), 0,
                 GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
         mSurfaceTexture = new SurfaceTexture(mInTextureId);
 //        mFboId = initFBO();
         mCustomerCallback.textureCreated(mSurfaceTexture);
@@ -81,7 +96,7 @@ public class CustomerRender implements GLSurfaceView.Renderer {
     @Override
     public void onDrawFrame(GL10 gl) {
         if (!isReady || mSurfaceTexture == null || mCameraMatrix == null || mImageMatrix == null) {
-            Log.i(TAG, "onDrawFrame: skip  isReady: " + isReady + " mSurfaceTexture: " +mSurfaceTexture + " mCameraMatrix: "+ mCameraMatrix +" mImageMatrix: " + mImageMatrix);
+            Log.i(TAG, "onDrawFrame: skip  isReady: " + isReady + " mSurfaceTexture: " + mSurfaceTexture + " mCameraMatrix: " + mCameraMatrix + " mImageMatrix: " + mImageMatrix);
             return;
         }
 /*        if (null == mImageData) {
@@ -92,6 +107,7 @@ public class CustomerRender implements GLSurfaceView.Renderer {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
         mSurfaceTexture.updateTexImage();
         float[] mtx = new float[16];
+        GLES20.glViewport(mViewportRect.left, mViewportRect.top, mViewportRect.right, mViewportRect.bottom);
         mSurfaceTexture.getTransformMatrix(mtx);
         if (/*res*/false) {
             mImageMatrix.setTextureTransformMatrix(mtx);
