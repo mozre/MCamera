@@ -107,6 +107,7 @@ public class CustomerRender implements GLSurfaceView.Renderer {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
         mSurfaceTexture.updateTexImage();
         float[] mtx = new float[16];
+        Log.d(TAG, "onDrawFrame: " + mViewportRect.toString());
         GLES20.glViewport(mViewportRect.left, mViewportRect.top, mViewportRect.right, mViewportRect.bottom);
         mSurfaceTexture.getTransformMatrix(mtx);
         if (/*res*/false) {

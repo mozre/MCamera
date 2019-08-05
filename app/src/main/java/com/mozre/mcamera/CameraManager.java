@@ -1,9 +1,12 @@
 package com.mozre.mcamera;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.ImageFormat;
+import android.graphics.PointF;
 import android.graphics.SurfaceTexture;
+import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -14,30 +17,35 @@ import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.Face;
 import android.hardware.camera2.params.MeteringRectangle;
+import android.hardware.display.DisplayManager;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.Surface;
+import android.view.View;
 import android.widget.RelativeLayout;
 
+import com.mozre.mcamera.element.FocusRegionGuideView;
 import com.mozre.mcamera.gl.CustomerGLSurfaceView;
 import com.mozre.mcamera.gl.CustomerRender;
 
 import java.util.Arrays;
 import java.util.List;
 
-public class CameraManager implements CustomerRender.CustomerRenderCallback {
+public class CameraManager implements CustomerRender.CustomerRenderCallback, View.OnTouchListener {
     private static final String TAG = Constants.getTagName(CameraManager.class.getSimpleName());
     private CameraThread mCameraThread;
     private CameraDevice mCameraDevice;
     private static CameraManager sCameraManager;
+    private FocusOverlayManager mFocusOverlayManager;
     private android.hardware.camera2.CameraManager mCameraService;
     private CameraCharacteristics mCameraCharacteristics;
     private CameraCaptureSession mCameraCaptureSession;
     private Surface mGLPreviewSurface;
-    private Surface mFrameStreamingSurface;
+    private ImageReader mFrameStreamingImageReader;
     private CaptureRequest mPreviewCaptureRequest;
     private Handler mMainHandler;
     private String mMainCameraId = "-1";
@@ -48,6 +56,8 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
     private boolean mIsStartPreview = false;
     private CustomerGLSurfaceView mCustomerSurfaceView;
     private RelativeLayout mContainer;
+    private boolean mIsTapDown = false;
+    private DisplayManager.DisplayListener mDisplayListener;
 
     private CameraDevice.StateCallback mCameraOpenStateCallback = new CameraDevice.StateCallback() {
         @Override
@@ -112,6 +122,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
             mPreviewCaptureRequest = request;
             Face[] faces = result.get(CaptureResult.STATISTICS_FACES);
             String id = (String) result.getRequest().getTag();
+            mFocusOverlayManager.notifyDetectFacesChange(faces);
             Log.i(TAG, "onCaptureCompleted id: " + id + " face count: " + faces.length);
             if (mMainCameraId.equals(id) && mCustomerSurfaceView != null) {
                 mCustomerSurfaceView.previewReady();
@@ -155,10 +166,12 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
         return sCameraManager;
     }
 
-    public void init(Context context, RelativeLayout mRelativeContainer) {
+    public void init(final Activity context, RelativeLayout mRelativeContainer) {
         Log.d(TAG, "init: ");
-        this.mContext = context;
-        this.mContainer = mRelativeContainer;
+        mContext = context;
+        mContainer = (RelativeLayout) mRelativeContainer.findViewById(R.id.main_container);
+        mContainer.setOnTouchListener(this);
+        FocusRegionGuideView focusRegionGuideView = mRelativeContainer.findViewById(R.id.main_focus_guide);
         mCameraThread = new CameraThread(Constants.CAMERA_THREAD_NAME);
         mCameraThread.start();
         mCameraService = (android.hardware.camera2.CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
@@ -174,11 +187,30 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
         }
         if (id != null && id.length > 0) {
             mMainCameraId = id[0];
+            mFocusOverlayManager = new FocusOverlayManager(focusRegionGuideView, getCameraCharacteristics(mMainCameraId));
             Log.e(TAG, "init: get Camera id list  " + id.length);
         } else {
             Log.e(TAG, "init: get Camera id list is empty " + id.length);
         }
 
+        mDisplayListener = new DisplayManager.DisplayListener() {
+            @Override
+            public void onDisplayAdded(int displayId) {
+
+            }
+
+            @Override
+            public void onDisplayRemoved(int displayId) {
+
+            }
+
+            @Override
+            public void onDisplayChanged(int displayId) {
+                if (mDisplayListener == null) return;
+                mFocusOverlayManager.updateDisplayOrientation(CameraUtil.getDisplayOrientation(context));
+            }
+        };
+        mFocusOverlayManager.updateDisplayOrientation(CameraUtil.getDisplayOrientation(context));
     }
 
 
@@ -240,8 +272,8 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
         ImageReader imageReader = ImageReader.newInstance(Constants.PREVIEW_SIZE.getWidth(),
                 Constants.PREVIEW_SIZE.getHeight(), ImageFormat.YUV_420_888, 1);
         imageReader.setOnImageAvailableListener(mImageAvailableListener, handler);
-        mFrameStreamingSurface = imageReader.getSurface();
-        return Arrays.asList(mGLPreviewSurface, mFrameStreamingSurface);
+        mFrameStreamingImageReader = imageReader;
+        return Arrays.asList(mGLPreviewSurface, mFrameStreamingImageReader.getSurface());
     }
 
     private int checkModeIsSupport(int mode, CameraCharacteristics.Key<int[]> key) {
@@ -261,13 +293,14 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
     }
 
     private void sendPreviewRequest(Handler handler, String id) {
-        Log.d(TAG, "sendPreviewRequest: ");
+
         int afMode = checkModeIsSupport(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE, CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
         int aeAntibandingMode = checkModeIsSupport(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO, CameraCharacteristics.CONTROL_AE_AVAILABLE_ANTIBANDING_MODES);
+
         try {
             CaptureRequest.Builder builder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             builder.addTarget(mGLPreviewSurface);
-            builder.addTarget(mFrameStreamingSurface);
+            builder.addTarget(mFrameStreamingImageReader.getSurface());
             if (afMode != -1) {
                 builder.set(CaptureRequest.CONTROL_AF_MODE, afMode);
             }
@@ -291,7 +324,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
     }
 
     public void sendCaptureRequest(int orientation, Handler handler) {
-        int rotation = getCameraRotation(orientation);
+        int rotation = mFocusOverlayManager.getCameraRotation();
         try {
             CaptureRequest.Builder builder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             builder.set(CaptureRequest.JPEG_ORIENTATION, rotation);
@@ -301,19 +334,6 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
             mCameraCaptureSession.capture(builder.build(), null, handler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
-        }
-    }
-
-    private int getCameraRotation(int orientation) {
-        Integer sensorOrientation = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-        Integer sensorLens = mCameraCharacteristics.get(CameraCharacteristics.LENS_FACING);
-        if (sensorOrientation == null || sensorLens == null) {
-            return -1;
-        }
-        if (sensorLens == CameraCharacteristics.LENS_FACING_BACK) {
-            return (sensorOrientation + orientation) % 360;
-        } else {
-            return (sensorOrientation - orientation + 360) % 360;
         }
     }
 
@@ -355,11 +375,20 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
     public void startPreview() {
         Log.d(TAG, "startPreview: ++++++");
         if (mCustomerSurfaceView == null) {
-            mCustomerSurfaceView = new CustomerGLSurfaceView(mContext,Constants.PREVIEW_SIZE.getWidth(), Constants.PREVIEW_SIZE.getHeight());
+            mCustomerSurfaceView = new CustomerGLSurfaceView(mContext, Constants.PREVIEW_SIZE.getWidth(), Constants.PREVIEW_SIZE.getHeight());
             mCustomerSurfaceView.setRenderCallBack(this);
         }
         mContainer.addView(mCustomerSurfaceView, 0);
         this.openCamera(mContext, mMainHandler, mMainCameraId);
+        mCustomerSurfaceView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                if (mCustomerSurfaceView == null) {
+                    return;
+                }
+                mFocusOverlayManager.updateSurfaceViewLayoutChange(right - left, bottom - top);
+            }
+        });
     }
 
     public void stopPreview() {
@@ -378,7 +407,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
         this.mIsStartPreview = false;
         this.mIsSurfaceTextureReady = false;
         this.mIsCameraReady = false;
-        if (mCustomerSurfaceView!= null) {
+        if (mCustomerSurfaceView != null) {
             mCustomerSurfaceView.release();
             mContainer.removeView(mCustomerSurfaceView);
             mCustomerSurfaceView = null;
@@ -394,6 +423,8 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
                 e.printStackTrace();
             }
         }
+        mDisplayListener = null;
+        sCameraManager = null;
     }
 
     @Override
@@ -411,4 +442,32 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback {
         });
 
     }
+
+    @Override
+    public boolean onTouch(View v, MotionEvent event) {
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                mIsTapDown = true;
+                Log.d(TAG, "onTouch: DOWN");
+                mMainHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        mIsTapDown = false;
+                    }
+                }, Constants.ACTION_TOUCH_DOWN_RESET_DELAY);
+                return true;
+            case MotionEvent.ACTION_UP:
+                Log.d(TAG, "onTouch: UP");
+                if (!mIsTapDown) {
+                    break;
+                }
+                mIsTapDown = false;
+                if (event.getY() < Constants.PREVIEW_SIZE.getWidth()) {
+                    mFocusOverlayManager.touchPointNotify(new PointF(event.getX(), event.getY()));
+                }
+                break;
+        }
+        return false;
+    }
+
 }

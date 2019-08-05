@@ -2,6 +2,7 @@ package com.mozre.mcamera;
 
 import android.content.pm.PackageManager;
 import android.graphics.BitmapFactory;
+import android.graphics.PointF;
 import android.graphics.SurfaceTexture;
 import android.os.Build;
 import android.os.Handler;
@@ -10,25 +11,29 @@ import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.TextureView;
+import android.view.View;
 import android.widget.RelativeLayout;
 
+import com.mozre.mcamera.element.FocusRegionGuideView;
 
-public class CameraActivity extends AppCompatActivity {
+
+public class CameraActivity extends AppCompatActivity{
     private static final String TAG = Constants.getTagName(CameraActivity.class.getSimpleName());
     private TextureView mTextureView;
     private SurfaceTexture mSurfaceTexture;
     private CameraManager mCameraManager;
+    private FocusOverlayManager mFocusOverlayManager;
     private Handler mMainHandler = new Handler(Looper.getMainLooper());
     private RelativeLayout mRelativeContainer;
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_camera);
         getWindowManager().getDefaultDisplay().getRotation();
-        mRelativeContainer = (RelativeLayout)findViewById(R.id.main_container);
+        mRelativeContainer = (RelativeLayout)findViewById(R.id.root_container);
         Log.d(TAG, "onCreate: -----------");
         mCameraManager = CameraManager.getInstance();
         mCameraManager.setMainHandler(mMainHandler);
@@ -81,4 +86,5 @@ public class CameraActivity extends AppCompatActivity {
             }
         }
     }
+
 }
