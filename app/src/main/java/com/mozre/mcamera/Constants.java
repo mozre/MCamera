@@ -19,6 +19,7 @@ public class Constants {
     public static final float AE_REGION_RATIO = AF_REGION_RATIO * 1.5f;
     public static final int ACTION_TOUCH_DOWN_RESET_DELAY = 300;
     private static final int FOCUS_SQUARE_LENGTH = 200;
+    public static final int CANCEL_TOUCH_FOCUS_DELAY = 3000;
 
     public static String getTagName(String name) {
         return APP_TAG_NAME + name;

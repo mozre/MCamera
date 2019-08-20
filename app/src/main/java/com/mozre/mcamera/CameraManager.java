@@ -5,6 +5,8 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.ImageFormat;
 import android.graphics.PointF;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
@@ -35,7 +37,7 @@ import com.mozre.mcamera.gl.CustomerRender;
 import java.util.Arrays;
 import java.util.List;
 
-public class CameraManager implements CustomerRender.CustomerRenderCallback, View.OnTouchListener {
+public class CameraManager implements CustomerRender.CustomerRenderCallback, View.OnTouchListener, FocusOverlayManager.OnAfAeRoiChange {
     private static final String TAG = Constants.getTagName(CameraManager.class.getSimpleName());
     private CameraThread mCameraThread;
     private CameraDevice mCameraDevice;
@@ -58,7 +60,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
     private RelativeLayout mContainer;
     private boolean mIsTapDown = false;
     private DisplayManager.DisplayListener mDisplayListener;
-
+    private int mLastAfState = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
     private CameraDevice.StateCallback mCameraOpenStateCallback = new CameraDevice.StateCallback() {
         @Override
         public void onOpened(@NonNull CameraDevice camera) {
@@ -117,6 +119,12 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
         }
 
         @Override
+        public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
+            super.onCaptureProgressed(session, request, partialResult);
+            updateAfState(partialResult);
+        }
+
+        @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
             mPreviewCaptureRequest = request;
@@ -128,10 +136,11 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
                 mCustomerSurfaceView.previewReady();
                 mCustomerSurfaceView.requestRender();
             }
+            updateAfState(result);
         }
     };
 
-    private CameraCaptureSession.CaptureCallback mAeAfModeCaptureCallback = new CameraCaptureSession.CaptureCallback() {
+    private CameraCaptureSession.CaptureCallback mCaptureCallback = new CameraCaptureSession.CaptureCallback() {
         @Override
         public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
             super.onCaptureStarted(session, request, timestamp, frameNumber);
@@ -140,19 +149,13 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
         @Override
         public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
             super.onCaptureProgressed(session, request, partialResult);
-            Log.i(TAG, "onCaptureProgressed: ");
+            updateAfState(partialResult);
         }
 
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
-            Log.i(TAG, "onCaptureCompleted: ");
-        }
-
-        @Override
-        public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
-            super.onCaptureFailed(session, request, failure);
-            Log.i(TAG, "onCaptureFailed: ");
+            updateAfState(result);
         }
     };
 
@@ -187,7 +190,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
         }
         if (id != null && id.length > 0) {
             mMainCameraId = id[0];
-            mFocusOverlayManager = new FocusOverlayManager(focusRegionGuideView, getCameraCharacteristics(mMainCameraId));
+            mFocusOverlayManager = new FocusOverlayManager(focusRegionGuideView, getCameraCharacteristics(mMainCameraId), this);
             Log.e(TAG, "init: get Camera id list  " + id.length);
         } else {
             Log.e(TAG, "init: get Camera id list is empty " + id.length);
@@ -304,18 +307,18 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
             if (afMode != -1) {
                 builder.set(CaptureRequest.CONTROL_AF_MODE, afMode);
             }
-            if (aeAntibandingMode != -1) {
-                builder.set(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE, aeAntibandingMode);
-            }
+//            if (aeAntibandingMode != -1) {
+//                builder.set(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE, aeAntibandingMode);
+//            }
             builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
-            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+//            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
             // face detection
             builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE);
 //            builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
             // white balance
-            builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
+//            builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
             // Expose
-            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, CaptureRequest.CONTROL_AE_MODE_ON_EXTERNAL_FLASH);
+//            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, CaptureRequest.CONTROL_AE_MODE_ON_EXTERNAL_FLASH);
             builder.setTag(id);
             mCameraCaptureSession.setRepeatingRequest(builder.build(), mPreviewCaptureCallback, handler);
         } catch (CameraAccessException e) {
@@ -342,16 +345,37 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
         return (regionNum != null && regionNum > 0);
     }
 
-    public void sendAfAeRequest(MeteringRectangle focusArea, MeteringRectangle aeArea, Handler handler) {
+    private void sendAfAeRequest(MeteringRectangle focusArea, MeteringRectangle aeArea, int afMode, Handler handler) {
+        if (mCameraDevice == null) {
+            Log.e(TAG, "sendAfAeRequest: mCameraDevice is null!");
+            return;
+        }
         try {
-            CaptureRequest.Builder builder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            if (isAeAfRegionSupport(CameraCharacteristics.CONTROL_MAX_REGIONS_AF)) {
-                builder.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[]{focusArea});
+            CaptureRequest.Builder captureBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+            captureBuilder.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[]{focusArea});
+            if (isAeAfRegionSupport(CameraCharacteristics.CONTROL_MAX_REGIONS_AE)) {
+                captureBuilder.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[]{aeArea});
             }
+            captureBuilder.addTarget(mFrameStreamingImageReader.getSurface());
+            captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, afMode);
+            captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+//            captureBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+            mCameraCaptureSession.capture(captureBuilder.build(), mCaptureCallback, handler);
+            CaptureRequest.Builder builder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+            builder.set(CaptureRequest.CONTROL_AF_MODE, afMode);
+            builder.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[]{focusArea});
             if (isAeAfRegionSupport(CameraCharacteristics.CONTROL_MAX_REGIONS_AE)) {
                 builder.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[]{aeArea});
             }
-            mCameraCaptureSession.setRepeatingRequest(builder.build(), mAeAfModeCaptureCallback, handler);
+            builder.addTarget(mGLPreviewSurface);
+            builder.addTarget(mFrameStreamingImageReader.getSurface());
+            // face detection
+            builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE);
+            builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
+
+//            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, CaptureRequest.CONTROL_AE_MODE_ON_EXTERNAL_FLASH);
+            builder.setTag(mMainCameraId);
+            mCameraCaptureSession.setRepeatingRequest(builder.build(), mPreviewCaptureCallback, handler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -373,11 +397,11 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
     }
 
     public void startPreview() {
-        Log.d(TAG, "startPreview: ++++++");
         if (mCustomerSurfaceView == null) {
             mCustomerSurfaceView = new CustomerGLSurfaceView(mContext, Constants.PREVIEW_SIZE.getWidth(), Constants.PREVIEW_SIZE.getHeight());
             mCustomerSurfaceView.setRenderCallBack(this);
         }
+        mFocusOverlayManager.setPreviewRect(mCustomerSurfaceView.getRender().getRefPreviewRect());
         mContainer.addView(mCustomerSurfaceView, 0);
         this.openCamera(mContext, mMainHandler, mMainCameraId);
         mCustomerSurfaceView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
@@ -402,6 +426,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+        mFocusOverlayManager.updateViewDestory();
         this.releaseCamera();
         mSurfaceTexture = null;
         this.mIsStartPreview = false;
@@ -470,4 +495,25 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
         return false;
     }
 
+    private void updateAfState(CaptureResult result) {
+        final Integer resultAFState = result.get(CaptureResult.CONTROL_AF_STATE);
+        if (resultAFState != null && mLastAfState != resultAFState) {
+            Log.d(TAG, "onCaptureCompleted: " + resultAFState + " mLastAfState: " + mLastAfState);
+            mFocusOverlayManager.updateFocusStateChanged(resultAFState);
+            mLastAfState = resultAFState;
+        }
+    }
+    @Override
+    public void OnAfAeRoiChangeCallback(Rect afRect, Rect aeRect) {
+
+        final MeteringRectangle afMeteringRectangle = new MeteringRectangle(afRect, 1000);
+        final MeteringRectangle aeMeteringRectangle = new MeteringRectangle(aeRect, 1);
+        sendAfAeRequest(afMeteringRectangle, aeMeteringRectangle, CaptureRequest.CONTROL_AF_MODE_AUTO, mMainHandler);
+        mMainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                sendAfAeRequest(afMeteringRectangle, aeMeteringRectangle, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE, mMainHandler);
+            }
+        }, Constants.CANCEL_TOUCH_FOCUS_DELAY);
+    }
 }

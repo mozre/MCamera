@@ -9,6 +9,7 @@ import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Environment;
 import android.util.Log;
+import android.util.Size;
 import android.view.Display;
 
 import com.mozre.mcamera.Constants;
@@ -47,14 +48,15 @@ public class CustomerRender implements GLSurfaceView.Renderer {
         Display display = activity.getWindowManager().getDefaultDisplay();
         mViewportRect = new Rect();
         display.getRectSize(mViewportRect);
+        Log.d(TAG, "CustomerRender screen display: " + mViewportRect.toString() + " mWidth: " + mWidth + " mHeight: " + mHeight);
         float scale = mViewportRect.width() / (float) this.mWidth;
         int margin = (int) (mViewportRect.height() - scale * mHeight);
         mViewportRect.left = 0;
         mViewportRect.top = margin;
         mViewportRect.right = mViewportRect.width();
         mViewportRect.bottom = mViewportRect.height();
-//        Log.d(TAG, "CustomerRender screen width: " + mViewportRect.width() + " height: " + mViewportRect.height() + " width: " + width + " Height: " + height);
-        Log.d(TAG, "CustomerRender screen left: " + mViewportRect.left + " height: " + mViewportRect.top + " width: " + mViewportRect.right + " Height: " + mViewportRect.bottom);
+        Log.d(TAG, "CustomerRender screen width: " + mViewportRect.width() + " height: " + mViewportRect.height() + " width: " + width + " Height: " + height);
+//        Log.d(TAG, "CustomerRender screen mViewportRect: " + mViewportRect.toString());
     }
 
     @Override
@@ -186,6 +188,10 @@ public class CustomerRender implements GLSurfaceView.Renderer {
 
     public void previewReady() {
         this.isReady = true;
+    }
+
+    public Rect getRefPreviewRect() {
+        return mViewportRect;
     }
 
     public interface CustomerRenderCallback {

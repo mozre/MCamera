@@ -9,15 +9,13 @@ import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.hardware.camera2.params.Face;
+import android.os.Handler;
 import android.support.annotation.Nullable;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
 
 import com.mozre.mcamera.Constants;
-
-import java.util.Currency;
-import java.util.List;
 
 public class FocusRegionGuideView extends View {
     private static final String TAG = Constants.getTagName(FocusRegionGuideView.class.getSimpleName());
@@ -34,6 +32,8 @@ public class FocusRegionGuideView extends View {
     private Rect mCameraBound;
     private Rect mSurfaceRect = new Rect();
     private float mZoom = 1.0f;
+    private int mColorAf = Color.BLUE;
+    private Handler mHandler = new Handler();
 
     public FocusRegionGuideView(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
@@ -67,8 +67,8 @@ public class FocusRegionGuideView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         initState();
-        calcDrawRect(canvas);
         drawFaceRects(canvas);
+        drawFocusRect(canvas);
     }
 
     private void drawFaceRects(Canvas canvas) {
@@ -89,89 +89,28 @@ public class FocusRegionGuideView extends View {
     }
 
     private void initState() {
-        mPaint.setColor(Color.BLUE);
+        mPaint.setColor(Color.GREEN);
         mPaint.setStrokeWidth(5f);
         mPaint.setAntiAlias(true);
         mPaint.setStyle(Paint.Style.STROKE);
     }
 
-    private void calcDrawRect(Canvas canvas) {
+    private void drawFocusRect(Canvas canvas) {
         if (mCurrentPointF.equals(0f, 0f)) {
-            mCurrentDrawRect.left = mCurrentViewSize.centerX() - SQUARE_LENGTH / 2;
-            mCurrentDrawRect.right = mCurrentViewSize.centerX() + SQUARE_LENGTH / 2;
-            mCurrentDrawRect.top = mCurrentViewSize.centerY() - SQUARE_LENGTH / 2;
-            mCurrentDrawRect.bottom = mCurrentViewSize.centerY() + SQUARE_LENGTH / 2;
-        } else {
-            mCurrentDrawRect.left = (int) (mCurrentPointF.x - SQUARE_LENGTH / 2);
-            mCurrentDrawRect.right = (int) (mCurrentPointF.x + SQUARE_LENGTH / 2);
-            mCurrentDrawRect.top = (int) (mCurrentPointF.y - SQUARE_LENGTH / 2);
-            mCurrentDrawRect.bottom = (int) (mCurrentPointF.y + SQUARE_LENGTH / 2);
+            return;
         }
-
+        mCurrentDrawRect.left = (int) (mCurrentPointF.x - SQUARE_LENGTH / 2);
+        mCurrentDrawRect.right = (int) (mCurrentPointF.x + SQUARE_LENGTH / 2);
+        mCurrentDrawRect.top = (int) (mCurrentPointF.y - SQUARE_LENGTH / 2);
+        mCurrentDrawRect.bottom = (int) (mCurrentPointF.y + SQUARE_LENGTH / 2);
         int rectWidth = mCurrentDrawRect.right - mCurrentDrawRect.left;
         int rectHeight = mCurrentDrawRect.bottom - mCurrentDrawRect.top;
         float diameter = rectHeight > rectWidth ? rectHeight : rectWidth;
+        mPaint.setColor(mColorAf);
         canvas.drawCircle(mCurrentDrawRect.centerX(), mCurrentDrawRect.centerY(), diameter / 2, mPaint);
-        Log.d(TAG, "calcDrawRect mCurrentViewSize:" + mCurrentViewSize.toString() + " mCurrentDrawRect: " + mCurrentDrawRect.toString());
+        Log.d(TAG, "drawFocusRect mCurrentViewSize:" + mCurrentViewSize.toString() + " mCurrentDrawRect: " + mCurrentDrawRect.toString());
     }
 
-    /*
-        private void drawFaceRects(Canvas canvas) {
-            if (mCurrentFaces == null || mCurrentFaces.length == 0) {
-                return;
-            }
-            int rw, rh;
-            rw = mSurfaceRect.width();
-            rh = mSurfaceRect.height();
-            if (((rh > rw) && ((mDisplayOrientation == 0) || (mDisplayOrientation == 180)))
-                    || ((rw > rh) && ((mDisplayOrientation == 90) || (mDisplayOrientation == 270)))) {
-                rw = rh + rh;
-                rh = rw - rh;
-                rw = rw - rh;
-            }
-            if (rw * mCameraBound.width() != mCameraBound.height() * rh) {
-                if (rw == rh || (rh * 288 == rw * 352) || (rh * 480 == rw * 800)) {
-                    rh = rw * mCameraBound.width() / mCameraBound.height();
-                } else {
-                    rw = rh * mCameraBound.height() / mCameraBound.width();
-                }
-            }
-            this.initTransMatrix();
-            int dx = (getWidth() - mSurfaceRect.width()) / 2;
-            dx -= (rw - mSurfaceRect.width()) / 2;
-            int dy = (getHeight() - mSurfaceRect.height()) / 2;
-            dy -= (rh - mSurfaceRect.height()) / 2;
-            canvas.save();
-            mMatrix.postRotate(mOrientation); // postRotate is clockwise
-            canvas.rotate(-mOrientation); // rotate is counter-clockwise (for canvas)
-            Log.d(TAG, "drawFaceRects: mCurrentFaces.length:" + mCurrentFaces.length);
-            RectF currentRectF = new RectF();
-            for (int i = 0; i< mCurrentFaces.length; ++i) {
-                if (mCurrentFaces[i].getScore() < 50) continue;
-                Rect faceBound = mCurrentFaces[i].getBounds();
-                android.util.Log.d(TAG, "onDraw  origin faces[i]: " + faceBound.toString());
-                faceBound.offset(-mCameraBound.left, -mCameraBound.top);
-                android.util.Log.d(TAG, "onDraw  after faces[i]: " + faceBound.toString());
-                if (isFDRectOutOfBound(faceBound)) continue;
-                currentRectF.set(faceBound);
-                if (mZoom != 1.0f) {
-                    currentRectF.left = currentRectF.left - mCameraBound.left;
-                    currentRectF.right = currentRectF.right - mCameraBound.left;
-                    currentRectF.top = currentRectF.top - mCameraBound.top;
-                    currentRectF.bottom = currentRectF.bottom - mCameraBound.top;
-                }
-                android.util.Log.d(TAG, "onDraw  zoom fix faces[i]: " + currentRectF.toString());
-                mTranslationMatrix.mapRect(currentRectF);
-                android.util.Log.d(TAG, "onDraw translateMatrix mapRect fix faces[i]: " + currentRectF.toString());
-                mMatrix.mapRect(currentRectF);
-                android.util.Log.d(TAG, "onDraw mMatrix mapRect fix faces[i]: " + currentRectF.toString());
-                currentRectF.offset(dx, dy);
-                Log.d(TAG, "onDraw: mRect.offset dx: " + dx + " dy: " + dy);
-                android.util.Log.d(TAG, "onDraw mRect offset faces[i]: " + currentRectF.toString());
-                canvas.drawRect(currentRectF, mPaint);
-            }
-        }
-    */
     private boolean isFDRectOutOfBound(Rect faceRect) {
         return mCameraBound.left > faceRect.left || mCameraBound.top > faceRect.top ||
                 faceRect.right > mCameraBound.right || faceRect.bottom > mCameraBound.bottom;
@@ -179,16 +118,13 @@ public class FocusRegionGuideView extends View {
 
     public void touchPointNotify(PointF pointF) {
         mCurrentPointF.set(pointF);
+        mColorAf = Color.RED;
         invalidate();
     }
 
     public void notifyFaceDetectChange(Face[] faces) {
-        RectF rectFs = new RectF(386.51566f, 699.8125f, 730.34375f, 1043.9922f);
-//        rects = new ArrayList<>();
-//        rects.add(rectFs);
         this.mCurrentFaces = faces;
         invalidate();
-//        requestLayout();
     }
 
     public void initTransMatrix() {
@@ -219,5 +155,28 @@ public class FocusRegionGuideView extends View {
         mSurfaceRect.right = width;
         mSurfaceRect.top = 0;
         mSurfaceRect.bottom = height;
+    }
+
+    public void updateAfStateChanged(boolean state) {
+        if (state) {
+            mColorAf = Color.GREEN;
+            mHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    mColorAf = Color.RED;
+                    mCurrentDrawRect.setEmpty();
+                }
+            }, Constants.CANCEL_TOUCH_FOCUS_DELAY);
+
+        } else {
+            mColorAf = Color.RED;
+        }
+    }
+
+    public void clear() {
+        mCurrentFaces = null;
+        mCurrentDrawRect.setEmpty();
+        mCurrentPointF.set(0f, 0f);
+        invalidate();
     }
 }

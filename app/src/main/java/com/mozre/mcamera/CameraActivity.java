@@ -34,7 +34,6 @@ public class CameraActivity extends AppCompatActivity{
         setContentView(R.layout.activity_camera);
         getWindowManager().getDefaultDisplay().getRotation();
         mRelativeContainer = (RelativeLayout)findViewById(R.id.root_container);
-        Log.d(TAG, "onCreate: -----------");
         mCameraManager = CameraManager.getInstance();
         mCameraManager.setMainHandler(mMainHandler);
 /*        CircleImageView circleImageView = (CircleImageView) findViewById(R.id.circle_image_view);
@@ -45,7 +44,6 @@ public class CameraActivity extends AppCompatActivity{
     @Override
     protected void onStart() {
         super.onStart();
-        Log.d(TAG, "onStart: ----------------");
         mCameraManager.init(this, mRelativeContainer);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PermissionManager.checkAndRequestPermission(this, Constants.PERMISSIONS);
@@ -54,7 +52,6 @@ public class CameraActivity extends AppCompatActivity{
 
     @Override
     protected void onResume() {
-        Log.d(TAG, "onResume: -----------");
         super.onResume();
         mCameraManager.startPreview();
     }

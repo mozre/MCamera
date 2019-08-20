@@ -1,11 +1,13 @@
 package com.mozre.mcamera;
 
 import android.graphics.Matrix;
+import android.graphics.Point;
 import android.graphics.PointF;
 import android.graphics.RectF;
 import android.graphics.Rect;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.params.Face;
 import android.util.Log;
 import android.util.Size;
@@ -15,6 +17,8 @@ import com.mozre.mcamera.element.FocusRegionGuideView;
 import java.util.LinkedList;
 import java.util.List;
 
+import static android.support.v4.math.MathUtils.clamp;
+
 public class FocusOverlayManager {
     private static final String TAG = Constants.getTagName(FocusOverlayManager.class.getSimpleName());
     private CameraCharacteristics mCameraCharacteristics;
@@ -23,88 +27,92 @@ public class FocusOverlayManager {
     private FocusRegionGuideView mFocusRegionGuideView;
     private int mDisplayOrientation;
     private int mCameraRotation;
+    private Rect mSensorBoundRect;
+    private OnAfAeRoiChange mOnAfAeRoiChangeCallback;
 
-    public FocusOverlayManager(FocusRegionGuideView focusRegionGuideView, CameraCharacteristics cameraCharacteristics) {
+    public FocusOverlayManager(FocusRegionGuideView focusRegionGuideView, CameraCharacteristics cameraCharacteristics, OnAfAeRoiChange onAfAeRoiChange) {
         mFocusRegionGuideView = focusRegionGuideView;
+        mOnAfAeRoiChangeCallback = onAfAeRoiChange;
         this.mCameraCharacteristics = cameraCharacteristics;
-        focusRegionGuideView.setCameraBound(mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE));
+        mSensorBoundRect = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+        focusRegionGuideView.setCameraBound(mSensorBoundRect);
     }
 
     public void onFocusPointChanged(PointF pointF) {
-        RectF afRect = calcFocusRect(pointF, Constants.AF_REGION_RATIO);
-        RectF aeRect = calcFocusRect(pointF, Constants.AE_REGION_RATIO);
+        Rect afRect = calcFocusRect(pointF, Constants.AF_REGION_RATIO);
+        Rect aeRect = calcFocusRect(pointF, Constants.AE_REGION_RATIO);
 
+        mOnAfAeRoiChangeCallback.OnAfAeRoiChangeCallback(afRect, aeRect);
     }
 
-    public RectF calcFocusRect(PointF point, float regionRatio) {
-        Rect sensorRectRegion = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+    public Rect calcFocusRect(PointF point, float regionRatio) {
         // ref to preview range
-        RectF outRectF = new RectF();
-        getRoiFromPoint(point, regionRatio, outRectF);
-        fixRectangleRegion(outRectF, mPreviewRect);
-        refRoiRectToSensorSize(sensorRectRegion, mPreviewRect, outRectF);
-        return outRectF;
+        Size previewSize = Constants.PREVIEW_SIZE;
+        Rect cameraBound = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+        Log.d(TAG, "active Rect:" + cameraBound.toString());
+        Rect newRect;
+        int areaSize = (int) (previewSize.getHeight() / regionRatio);
+        int leftPos, topPos;
+        float newX = point.y;
+        float newY = previewSize.getHeight() - point.x;
+        leftPos = (int) ((newX / previewSize.getWidth()) * cameraBound.right);
+        topPos = (int) ((newY / previewSize.getHeight()) * cameraBound.bottom);
+        int left = clamp(leftPos - areaSize, 0, cameraBound.right);
+        int top = clamp(topPos - areaSize, 0, cameraBound.bottom);
+        int right = clamp(leftPos + areaSize, leftPos, cameraBound.right);
+        int bottom = clamp(topPos + areaSize, topPos, cameraBound.bottom);
+        newRect = new Rect(left, top, right, bottom);
+        Log.d(TAG, newRect.toString());
+        Log.d(TAG, "calcFocusRect: focus region: " + newRect.toString());
+        return newRect;
     }
 
-    private void refRoiRectToSensorSize(Rect sensorRectRegion, Rect mPreviewRect, RectF outRectF) {
-        float ratioX = sensorRectRegion.width() / mPreviewRect.width();
-        float ratioY = sensorRectRegion.height() / mPreviewRect.height();
-        outRectF.left *= ratioX;
-        outRectF.right *= ratioX;
-        outRectF.top *= ratioY;
-        outRectF.bottom *= ratioY;
+    private void refRoiRectToSensorSize(Rect sensorRectRegion, Size previewSize, Rect outRect) {
+        float ratioX = sensorRectRegion.width() * 1.0f / previewSize.getWidth();
+        Log.d(TAG, "refRoiRectToSensorSize: " + outRect.toString());
+        outRect.left = (int) (outRect.top * ratioX);
+        outRect.right = (int) ((previewSize.getHeight() - outRect.left) * ratioX);
+        outRect.top = (int) (outRect.bottom * ratioX);
+        int temp2 = previewSize.getHeight() - outRect.right;
+        outRect.bottom = (int) (temp2 * ratioX);
+        Log.d(TAG, "refRoiRectToSensorSize: end: " + outRect.right);
     }
 
-    private void getRoiFromPoint(PointF point, float regionRatio, RectF outRectF) {
+    private void getRoiFromPoint(PointF point, float regionRatio, Rect outRect) {
         float halfRegionX = mPreviewRect.width() / regionRatio / 2;
         float halfRegionY = mPreviewRect.height() / regionRatio / 2;
-        outRectF.left = point.x - halfRegionX;
-        outRectF.right = point.x + halfRegionX;
-        outRectF.top = point.y - halfRegionY;
-        outRectF.bottom = point.y + halfRegionY;
+        outRect.left = (int) (point.x - halfRegionX);
+        outRect.right = (int) (point.x + halfRegionX);
+        outRect.top = (int) (point.y - halfRegionY);
+        outRect.bottom = (int) (point.y + halfRegionY);
     }
 
-    private void fixRectangleRegion(RectF outRectF, Rect mPreviewRect) {
-        if (outRectF.left < mPreviewRect.left) {
-            outRectF.left = mPreviewRect.left;
+    private void fixRectangleRegion(Rect outRect, Rect mPreviewRect) {
+        if (outRect.left < mPreviewRect.left) {
+            outRect.left = mPreviewRect.left;
         }
-        if (outRectF.right > mPreviewRect.right) {
-            outRectF.right = mPreviewRect.right;
+        if (outRect.right > mPreviewRect.right) {
+            outRect.right = mPreviewRect.right;
         }
-        if (outRectF.top < mPreviewRect.top) {
-            outRectF.top = mPreviewRect.top;
+        if (outRect.top < mPreviewRect.top) {
+            outRect.top = mPreviewRect.top;
         }
-        if (outRectF.bottom > mPreviewRect.bottom) {
-            outRectF.bottom = mPreviewRect.bottom;
+        if (outRect.bottom > mPreviewRect.bottom) {
+            outRect.bottom = mPreviewRect.bottom;
         }
     }
 
     public void touchPointNotify(PointF pointF) {
+        Log.d(TAG, "touchPointNotify: pointF(" + pointF.x + ", " + pointF.y + ")"
+                + " mPreviewRect(" + mPreviewRect.width() + ", " + mPreviewRect.height() + ")");
+        if (mPreviewRect == null || pointF.x > mPreviewRect.right || pointF.y > mPreviewRect.bottom) {
+            return;
+        }
+        onFocusPointChanged(pointF);
         mFocusRegionGuideView.touchPointNotify(pointF);
     }
 
     public void notifyDetectFacesChange(Face[] faces) {
-        // 4608, 3456
-        Rect sensorRectRegion = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
-        Log.d(TAG, "notifyDetectFacesChange: " + " sensorRectRegion: " + sensorRectRegion.toString());
-        if (faces == null || faces.length == 0 || sensorRectRegion == null) {
-            return;
-        }
-        List<RectF> faceRects = new LinkedList<>();
-        Rect rect;
-        for (int i = 0; i < faces.length; ++i) {
-            RectF tmpRect = new RectF();
-            rect = faces[i].getBounds();
-            Log.d(TAG, "notifyDetectFacesChange rect:" + rect.toString());
-            tmpRect.left = Constants.PREVIEW_SIZE.getHeight() - rect.top * (Constants.PREVIEW_SIZE.getHeight() * 1.0f / sensorRectRegion.height());
-            tmpRect.top = Constants.PREVIEW_SIZE.getWidth() - rect.left * (Constants.PREVIEW_SIZE.getWidth() * 1.0f / sensorRectRegion.width());
-            tmpRect.right = Constants.PREVIEW_SIZE.getHeight() - rect.bottom * (Constants.PREVIEW_SIZE.getHeight() * 1.0f / sensorRectRegion.height()) + tmpRect.top;
-            tmpRect.bottom = Constants.PREVIEW_SIZE.getWidth() -rect.right * (Constants.PREVIEW_SIZE.getWidth() * 1.0f / sensorRectRegion.width()) + tmpRect.left;
-            Log.d(TAG, "notifyDetectFacesChange tmpRect: " + tmpRect.toString());
-            faceRects.add(tmpRect);
-        }
-//        Matrix matrix = new Matrix();
-//        matrix.setRectToRect()
         mFocusRegionGuideView.notifyFaceDetectChange(faces);
     }
 
@@ -143,4 +151,39 @@ public class FocusOverlayManager {
     public void updateSurfaceViewLayoutChange(int width, int height) {
         mFocusRegionGuideView.updateSurfaceViewLayoutChange(width, height);
     }
+
+    public void updateViewDestory() {
+        mFocusRegionGuideView.clear();
+    }
+
+    public void updateFocusStateChanged(Integer resultAFState) {
+        switch (resultAFState) {
+            case CameraMetadata.CONTROL_AF_STATE_INACTIVE:
+                // af set to off
+                break;
+            case CameraMetadata.CONTROL_AF_STATE_PASSIVE_SCAN:
+            case CameraMetadata.CONTROL_AF_STATE_ACTIVE_SCAN:
+                // start
+                break;
+            case CameraMetadata.CONTROL_AF_STATE_PASSIVE_FOCUSED:
+            case CameraMetadata.CONTROL_AF_STATE_FOCUSED_LOCKED:
+                // success
+                mFocusRegionGuideView.updateAfStateChanged(true);
+                break;
+            case CameraMetadata.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED:
+            case CameraMetadata.CONTROL_AF_STATE_PASSIVE_UNFOCUSED:
+                // fail
+                mFocusRegionGuideView.updateAfStateChanged(false);
+                break;
+        }
+    }
+
+    public void setPreviewRect(Rect refPreviewRect) {
+        mPreviewRect = refPreviewRect;
+    }
+
+    interface OnAfAeRoiChange {
+        void OnAfAeRoiChangeCallback(Rect afRect, Rect aeRect);
+    }
+
 }
