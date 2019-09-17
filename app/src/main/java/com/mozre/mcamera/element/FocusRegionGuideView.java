@@ -15,7 +15,7 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
 
-import com.mozre.mcamera.Constants;
+import com.mozre.mcamera.utils.Constants;
 
 public class FocusRegionGuideView extends View {
     private static final String TAG = Constants.getTagName(FocusRegionGuideView.class.getSimpleName());

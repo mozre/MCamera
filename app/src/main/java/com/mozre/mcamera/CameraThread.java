@@ -3,8 +3,9 @@ package com.mozre.mcamera;
 import android.os.Process;
 import android.util.Log;
 
+import com.mozre.mcamera.utils.Constants;
+
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class CameraThread extends Thread {
     private static final String TAG = Constants.getTagName(CameraThread.class.getSimpleName());

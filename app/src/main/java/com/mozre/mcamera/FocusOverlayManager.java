@@ -1,11 +1,7 @@
 package com.mozre.mcamera;
 
-import android.graphics.Matrix;
-import android.graphics.Point;
 import android.graphics.PointF;
-import android.graphics.RectF;
 import android.graphics.Rect;
-import android.hardware.Camera;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.params.Face;
@@ -13,9 +9,7 @@ import android.util.Log;
 import android.util.Size;
 
 import com.mozre.mcamera.element.FocusRegionGuideView;
-
-import java.util.LinkedList;
-import java.util.List;
+import com.mozre.mcamera.utils.Constants;
 
 import static android.support.v4.math.MathUtils.clamp;
 

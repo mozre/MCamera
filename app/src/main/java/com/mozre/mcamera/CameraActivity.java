@@ -1,8 +1,7 @@
 package com.mozre.mcamera;
 
+import android.content.Context;
 import android.content.pm.PackageManager;
-import android.graphics.BitmapFactory;
-import android.graphics.PointF;
 import android.graphics.SurfaceTexture;
 import android.os.Build;
 import android.os.Handler;
@@ -11,12 +10,11 @@ import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.MotionEvent;
+import android.view.OrientationEventListener;
 import android.view.TextureView;
-import android.view.View;
 import android.widget.RelativeLayout;
 
-import com.mozre.mcamera.element.FocusRegionGuideView;
+import com.mozre.mcamera.utils.Constants;
 
 
 public class CameraActivity extends AppCompatActivity{
@@ -27,6 +25,7 @@ public class CameraActivity extends AppCompatActivity{
     private FocusOverlayManager mFocusOverlayManager;
     private Handler mMainHandler = new Handler(Looper.getMainLooper());
     private RelativeLayout mRelativeContainer;
+    private OrientationEventListener mOrientationEventListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +35,8 @@ public class CameraActivity extends AppCompatActivity{
         mRelativeContainer = (RelativeLayout)findViewById(R.id.root_container);
         mCameraManager = CameraManager.getInstance();
         mCameraManager.setMainHandler(mMainHandler);
+        mOrientationEventListener = new CustomOrientationEventListener(this);
+
 /*        CircleImageView circleImageView = (CircleImageView) findViewById(R.id.circle_image_view);
         circleImageView.setImageBitmap(BitmapFactory.decodeResource(getResources(),R.drawable.light));*/
 //        WaManagerWrapper waManagerWrapper = WaManagerWrapper.getInstance();
@@ -54,12 +55,14 @@ public class CameraActivity extends AppCompatActivity{
     protected void onResume() {
         super.onResume();
         mCameraManager.startPreview();
+        mOrientationEventListener.enable();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         mCameraManager.stopPreview();
+        mOrientationEventListener.disable();
     }
 
     @Override
@@ -81,6 +84,17 @@ public class CameraActivity extends AppCompatActivity{
                     Log.e(TAG, "onRequestPermissionsResult: error");
                 }
             }
+        }
+    }
+
+    private class CustomOrientationEventListener extends OrientationEventListener {
+        public CustomOrientationEventListener(Context context) {
+            super(context);
+        }
+
+        @Override
+        public void onOrientationChanged(int orientation) {
+            mCameraManager.onOrientationChanged(orientation);
         }
     }
 

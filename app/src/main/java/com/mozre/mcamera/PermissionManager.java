@@ -7,6 +7,8 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 
 
+import com.mozre.mcamera.utils.Constants;
+
 import java.util.ArrayList;
 import java.util.List;
 

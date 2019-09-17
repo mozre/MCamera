@@ -1,4 +1,4 @@
-package com.mozre.mcamera;
+package com.mozre.mcamera.element;
 
 import android.content.Context;
 import android.content.res.TypedArray;
@@ -13,10 +13,12 @@ import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.support.v4.content.ContextCompat;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.widget.ImageView;
+
+import com.mozre.mcamera.R;
+import com.mozre.mcamera.utils.Constants;
 
 
 public class CircleImageView extends ImageView {

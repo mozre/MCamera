@@ -1,4 +1,4 @@
-package com.mozre.mcamera;
+package com.mozre.mcamera.utils;
 
 
 import android.Manifest;
@@ -10,6 +10,8 @@ public class Constants {
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
             Manifest.permission.READ_EXTERNAL_STORAGE,
     };
+
+    public static final int MAX_REQUIRED_IMAGE_NUM = 3;
     public static final int PERMISSION_REQUEST_CODE = 3;
     public static final String CAMERA_THREAD_NAME = "camera_thread_m";
     public static final Size PREVIEW_SIZE = new Size(1440, 1080);

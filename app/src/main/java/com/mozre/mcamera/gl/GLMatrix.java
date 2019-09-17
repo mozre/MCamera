@@ -2,10 +2,9 @@ package com.mozre.mcamera.gl;
 
 import android.content.Context;
 import android.opengl.GLES20;
-import android.util.Log;
 
 
-import com.mozre.mcamera.Constants;
+import com.mozre.mcamera.utils.Constants;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

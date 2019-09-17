@@ -31,7 +31,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1">
 
-            <com.mozre.mcamera.CircleImageView
+            <com.mozre.mcamera.element.CircleImageView
                 android:id="@+id/circle_image_view"
                 android:layout_width="@dimen/thumbnail_size"
                 android:layout_height="@dimen/thumbnail_size"
@@ -47,14 +47,16 @@
             android:layout_height="wrap_content"
             android:layout_weight="1">
 
-            <com.mozre.mcamera.TapCaptureView
+            <com.mozre.mcamera.element.TapCaptureView
                 android:id="@+id/tap_capture_view"
                 android:layout_width="@dimen/thumbnail_size"
                 android:layout_height="@dimen/thumbnail_size"
                 android:layout_centerInParent="true"
-                app:tap_border_color="@color/setting_normal_color"
-                app:tap_border_width="@dimen/border_width"
-                app:tap_content_color="@color/colorPrimaryDark" />
+                app:tap_border_active_color="@color/setting_normal_color"
+                app:tap_border_normal_color="@color/shutter_active_color"
+                app:tap_content_active_color="@color/shutter_active_color"
+                app:tap_content_normal_color="@color/setting_normal_color"
+                app:tap_border_width="@dimen/border_width"/>
 
         </RelativeLayout>
 

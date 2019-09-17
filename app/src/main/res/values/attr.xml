@@ -6,7 +6,9 @@
     </declare-styleable>
     <declare-styleable name="TapCaptureView">
         <attr name="tap_border_width" format="dimension" />
-        <attr name="tap_border_color" format="color" />
-        <attr name="tap_content_color" format="color" />
+        <attr name="tap_border_active_color" format="color" />
+        <attr name="tap_border_normal_color" format="color" />
+        <attr name="tap_content_active_color" format="color" />
+        <attr name="tap_content_normal_color" format="color" />
     </declare-styleable>
 </resources>

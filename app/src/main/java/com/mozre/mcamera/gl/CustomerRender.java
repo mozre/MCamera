@@ -9,10 +9,9 @@ import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Environment;
 import android.util.Log;
-import android.util.Size;
 import android.view.Display;
 
-import com.mozre.mcamera.Constants;
+import com.mozre.mcamera.utils.Constants;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -48,9 +47,9 @@ public class CustomerRender implements GLSurfaceView.Renderer {
         Display display = activity.getWindowManager().getDefaultDisplay();
         mViewportRect = new Rect();
         display.getRectSize(mViewportRect);
-        Log.d(TAG, "CustomerRender screen display: " + mViewportRect.toString() + " mWidth: " + mWidth + " mHeight: " + mHeight);
         float scale = mViewportRect.width() / (float) this.mWidth;
         int margin = (int) (mViewportRect.height() - scale * mHeight);
+        Log.d(TAG, "CustomerRender screen display: " + mViewportRect.toString() + " mWidth: " + mWidth + " mHeight: " + mHeight + " scale: " + scale);
         mViewportRect.left = 0;
         mViewportRect.top = margin;
         mViewportRect.right = mViewportRect.width();

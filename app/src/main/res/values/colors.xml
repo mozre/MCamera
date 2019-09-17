@@ -4,4 +4,7 @@
     <color name="colorPrimaryDark">#303F9F</color>
     <color name="colorAccent">#FF4081</color>
     <color name="setting_normal_color">#318f8f8f</color>
+    <color name="shutter_normal_color">#FFF</color>
+    <color name="shutter_active_color">#CCCCCC</color>
+
 </resources>

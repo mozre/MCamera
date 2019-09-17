@@ -2,18 +2,17 @@ package com.mozre.mcamera;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.graphics.ImageFormat;
 import android.graphics.PointF;
 import android.graphics.Rect;
-import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
-import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
-import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
@@ -23,17 +22,25 @@ import android.hardware.display.DisplayManager;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.Handler;
+import android.provider.MediaStore;
 import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.OrientationEventListener;
 import android.view.Surface;
 import android.view.View;
 import android.widget.RelativeLayout;
 
 import com.mozre.mcamera.element.FocusRegionGuideView;
+import com.mozre.mcamera.element.TapCaptureView;
 import com.mozre.mcamera.gl.CustomerGLSurfaceView;
 import com.mozre.mcamera.gl.CustomerRender;
+import com.mozre.mcamera.utils.CameraUtil;
+import com.mozre.mcamera.utils.Constants;
+import com.mozre.mcamera.utils.ImageHelper;
 
+import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 
@@ -48,6 +55,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
     private CameraCaptureSession mCameraCaptureSession;
     private Surface mGLPreviewSurface;
     private ImageReader mFrameStreamingImageReader;
+    private ImageReader mCaptureImageReader;
     private CaptureRequest mPreviewCaptureRequest;
     private Handler mMainHandler;
     private String mMainCameraId = "-1";
@@ -58,7 +66,9 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
     private boolean mIsStartPreview = false;
     private CustomerGLSurfaceView mCustomerSurfaceView;
     private RelativeLayout mContainer;
+    private TapCaptureView mTapCaptureView;
     private boolean mIsTapDown = false;
+    private int mOrientation = OrientationEventListener.ORIENTATION_UNKNOWN;
     private DisplayManager.DisplayListener mDisplayListener;
     private int mLastAfState = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
     private CameraDevice.StateCallback mCameraOpenStateCallback = new CameraDevice.StateCallback() {
@@ -102,11 +112,25 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
         }
     };
 
-    private ImageReader.OnImageAvailableListener mImageAvailableListener = new ImageReader.OnImageAvailableListener() {
+    private ImageReader.OnImageAvailableListener mPreviewImageAvailableListener = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(ImageReader reader) {
             Log.i(TAG, "onImageAvailable: +++++");
             Image image = reader.acquireNextImage();
+            image.close();
+        }
+    };
+
+    private ImageReader.OnImageAvailableListener mCaptureImageAvailableListener = new ImageReader.OnImageAvailableListener() {
+        @Override
+        public void onImageAvailable(ImageReader reader) {
+            Image image = reader.acquireNextImage();
+            ByteBuffer byteBuffer = image.getPlanes()[0].getBuffer();
+            byte[] imageBytes = new byte[byteBuffer.remaining()];
+            byteBuffer.get(imageBytes);
+            Log.e(TAG, "onImageAvailable: Capture call back ++++++ " + image.getWidth() + " " + image.getHeight() + " size: " + imageBytes.length);
+            String filePath = ImageHelper.saveImage(imageBytes);
+            ImageHelper.insertImageToDatabase(filePath, imageBytes.length, mContext.getContentResolver());
             image.close();
         }
     };
@@ -174,7 +198,9 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
         mContext = context;
         mContainer = (RelativeLayout) mRelativeContainer.findViewById(R.id.main_container);
         mContainer.setOnTouchListener(this);
-        FocusRegionGuideView focusRegionGuideView = mRelativeContainer.findViewById(R.id.main_focus_guide);
+        mTapCaptureView = (TapCaptureView) mRelativeContainer.findViewById(R.id.tap_capture_view);
+        mTapCaptureView.setOnTouchListener(this);
+        FocusRegionGuideView focusRegionGuideView = (FocusRegionGuideView) mRelativeContainer.findViewById(R.id.main_focus_guide);
         mCameraThread = new CameraThread(Constants.CAMERA_THREAD_NAME);
         mCameraThread.start();
         mCameraService = (android.hardware.camera2.CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
@@ -273,10 +299,13 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
         surfaceTexture.setDefaultBufferSize(Constants.PREVIEW_SIZE.getWidth(), Constants.PREVIEW_SIZE.getHeight());
         mGLPreviewSurface = new Surface(surfaceTexture);
         ImageReader imageReader = ImageReader.newInstance(Constants.PREVIEW_SIZE.getWidth(),
-                Constants.PREVIEW_SIZE.getHeight(), ImageFormat.YUV_420_888, 1);
-        imageReader.setOnImageAvailableListener(mImageAvailableListener, handler);
+                Constants.PREVIEW_SIZE.getHeight(), ImageFormat.YUV_420_888, Constants.MAX_REQUIRED_IMAGE_NUM);
+        imageReader.setOnImageAvailableListener(mPreviewImageAvailableListener, handler);
         mFrameStreamingImageReader = imageReader;
-        return Arrays.asList(mGLPreviewSurface, mFrameStreamingImageReader.getSurface());
+        mCaptureImageReader = ImageReader.newInstance(Constants.CAPTURE_SIZE.getWidth(),
+                Constants.CAPTURE_SIZE.getHeight(), ImageFormat.JPEG, 2);
+        mCaptureImageReader.setOnImageAvailableListener(mCaptureImageAvailableListener, handler);
+        return Arrays.asList(mGLPreviewSurface, mFrameStreamingImageReader.getSurface(), mCaptureImageReader.getSurface());
     }
 
     private int checkModeIsSupport(int mode, CameraCharacteristics.Key<int[]> key) {
@@ -334,6 +363,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
             builder.set(CaptureRequest.CONTROL_AF_MODE, mPreviewCaptureRequest.get(CaptureRequest.CONTROL_AF_MODE));
             builder.set(CaptureRequest.CONTROL_AE_MODE, mPreviewCaptureRequest.get(CaptureRequest.CONTROL_AE_MODE));
             builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, mPreviewCaptureRequest.get(CaptureRequest.LENS_FOCUS_DISTANCE));
+            builder.addTarget(mCaptureImageReader.getSurface());
             mCameraCaptureSession.capture(builder.build(), null, handler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
@@ -469,14 +499,20 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
     }
 
     @Override
-    public boolean onTouch(View v, MotionEvent event) {
+    public boolean onTouch(final View v, MotionEvent event) {
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 mIsTapDown = true;
                 Log.d(TAG, "onTouch: DOWN");
+                if (v.getId() == mTapCaptureView.getId()) {
+                    mTapCaptureView.touchShutter();
+                }
                 mMainHandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
+                        if (v.getId() == mTapCaptureView.getId()) {
+                            mTapCaptureView.cancelShutter();
+                        }
                         mIsTapDown = false;
                     }
                 }, Constants.ACTION_TOUCH_DOWN_RESET_DELAY);
@@ -487,12 +523,22 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
                     break;
                 }
                 mIsTapDown = false;
+                if (v.getId() == mTapCaptureView.getId()) {
+                    takePicture();
+
+                    return true;
+                }
+
                 if (event.getY() < Constants.PREVIEW_SIZE.getWidth()) {
                     mFocusOverlayManager.touchPointNotify(new PointF(event.getX(), event.getY()));
                 }
                 break;
         }
         return false;
+    }
+
+    private void takePicture() {
+        sendCaptureRequest(CameraUtil.getJpegRotation(mOrientation, getCameraCharacteristics(mCameraCaptureSession.getDevice().getId())), mMainHandler);
     }
 
     private void updateAfState(CaptureResult result) {
@@ -503,6 +549,7 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
             mLastAfState = resultAFState;
         }
     }
+
     @Override
     public void OnAfAeRoiChangeCallback(Rect afRect, Rect aeRect) {
 
@@ -515,5 +562,9 @@ public class CameraManager implements CustomerRender.CustomerRenderCallback, Vie
                 sendAfAeRequest(afMeteringRectangle, aeMeteringRectangle, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE, mMainHandler);
             }
         }, Constants.CANCEL_TOUCH_FOCUS_DELAY);
+    }
+
+    public void onOrientationChanged(int orientation) {
+        mOrientation = CameraUtil.roundOrientation(orientation, mOrientation);
     }
 }
